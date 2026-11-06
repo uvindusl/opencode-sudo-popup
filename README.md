@@ -23,14 +23,15 @@ npm install
 The `postinstall` script automatically:
 
 - Copies the askpass helper + GJS dialog to `~/.config/opencode/`.
-- Installs the plugin itself to `~/.config/opencode/plugin/sudo-reason.js` (OpenCode V1) and `~/.config/opencode/plugins/sudo-reason.js` (OpenCode V2).
-- Adds `export SUDO_ASKPASS=...` to your shell rc file (`~/.zshenv`, `~/.bashrc`, or `~/.config/fish/config.fish` — only if not already set).
+- Installs a `sudo` wrapper to `~/.local/bin/sudo`. It only changes behaviour when OpenCode launched the command (`OPENCODE` is set) and there is no terminal; everywhere else it simply `exec`s the real sudo.
+- Installs the plugin itself to `~/.config/opencode/plugin/sudo-reason.js` (V1) and `~/.config/opencode/plugins/sudo-reason.js` (V2).
+- Adds `PATH` and `SUDO_ASKPASS` exports to your shell rc file (`~/.zshenv`, `~/.bashrc`, or `~/.config/fish/config.fish`) — only when not already configured.
 
-> Restart opencode after installing so the plugin is loaded at startup.
+> Restart OpenCode (and your terminal) after installing.
 
-> V2 note: the plugin is built for the OpenCode V2 plugin API (`@opencode/plugin`, `Plugin.define`) and keeps a V1 `server()` export for legacy hosts. Because `postinstall` drops it straight into the discovered plugin directory, no `plugins` entry is needed in `opencode.json`. To load it as a package instead, add `"plugins": ["opencode-sudo-popup"]`.
+> `~/.local/bin` must come before `/usr/bin` in `PATH` for the wrapper to be found. The wrapper is inert outside OpenCode, so it does not affect your normal `sudo`, scripts, cron jobs, or services.
 
-> Note: opencode may load your config shell with `sudo` (e.g. `sudo -A`). Ensure `SUDO_ASKPASS` is set in an environment that survives into the `sudo` process. `~/.zshenv` works for zsh. For bash, having it in `~/.bashrc` requires an interactive shell. In non-interactive/fish environments, consider an `alias sudo='sudo -A'` in that shell.
+> V2 note: the plugin is built for the OpenCode V2 plugin API (`@opencode/plugin`, `Plugin.define`) and keeps a V1 `server()` export. The wrapper is a fallback for V2 builds that do not call `setup()` for file-local plugins; when your build does load the plugin, the `execute.before` hook adds the richer "purpose" text to the dialog.
 
 ## Usage
 
@@ -40,7 +41,7 @@ Just use opencode normally. Any time it needs root, the compact dialog appears s
 
 The helper uses a native **GJS + GTK4 + libadwaita** dialog (`Adw.Window` with a `PasswordEntryRow` and monospace command label) — a tiny single-screen window. This is the only backend; it prints a clear error if `gjs` is unavailable.
 
-The plugin writes JSON (`{command, purpose, ts}`) to the shared reason file; the GJS helper reads it with `Gio` (with fallback to old flat-string files).
+The plugin writes JSON (`{command, purpose, ts}`) to a per-user file at `/tmp/opencode-sudo-popup-<uid>/reason.json` (directory `0700`, file `0600`); the GJS helper reads it with `Gio`, falling back to a flat command string written by the wrapper.
 
 ## What it catches
 
@@ -52,20 +53,36 @@ It only matches `sudo` used as an actual command (whole word at a command bounda
 git clone https://github.com/uvindusl/opencode-sudo-popup
 cd opencode-sudo-popup
 npm install
-# postinstall wires the askpass helper into ~/.config/opencode.
-# To test the command-detection logic in isolation (V2 + V1 hooks):
+# postinstall wires the askpass helper + sudo wrapper into ~/.config/opencode and ~/.local/bin.
+# The plugin exports both:
+#   - setup()   → OpenCode V2 tool hook (execute.before)
+#   - server()  → OpenCode V1 legacy hooks
+# To test the command-detection logic in isolation (V2 hook):
 node --input-type=module -e "
-import('./src/index.js').then(async (m) => {
+import('./src/index.js').then(async m => {
   const p = m.default;
-  // OpenCode V2 hook
   await p.setup({ tool: { hook: async (name, cb) => { await cb({ tool: 'bash', input: { command: 'sudo apt update' } }); return { dispose() {} } } } });
-  // OpenCode V1 hook
+});
+"
+cat /tmp/opencode-sudo-popup-$(id -u)/reason.json
+# Or test the V1 server hook:
+node --input-type=module -e "
+import('./src/index.js').then(async m => {
+  const p = m.default;
   const hooks = await p.server();
   await hooks['tool.execute.before']({ tool: 'bash' }, { args: { command: 'sudo apt update' } });
 });
-cat /tmp/opencode-sudo-reason
 "
+cat /tmp/opencode-sudo-popup-$(id -u)/reason.json
 ```
+
+## Uninstall
+
+```bash
+npm run uninstall
+```
+
+Removes the `sudo` wrapper, the plugin copies, the askpass helpers, and the lines this installer added to your shell rc files. Restart OpenCode afterwards.
 
 ## License
 

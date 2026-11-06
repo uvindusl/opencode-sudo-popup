@@ -1,10 +1,11 @@
 #!/bin/bash
 # SUDO_ASKPASS helper for opencode-sudo-popup — compact popup.
 # Contract: print password to stdout on OK, exit non-zero on Cancel.
-# Reads context from /tmp/opencode-sudo-reason (JSON from src/index.js,
-# backward-compatible with the old flat-string file).
+# Reads context from the per-user reason file (JSON from src/index.js or the
+# wrapper, backward-compatible with legacy flat-string files).
 
-REASON_FILE="/tmp/opencode-sudo-reason"
+REASON_FILE="/tmp/opencode-sudo-popup-$(id -u)/reason.json"
+export OPENCODE_SUDO_REASON="$REASON_FILE"
 
 # --- Backend: modern compact dialog via GJS + GTK4/libadwaita -----------------
 # Prints password to stdout on OK, exit 1 on Cancel — same askpass contract.

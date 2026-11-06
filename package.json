@@ -22,7 +22,8 @@
   },
   "homepage": "https://github.com/uvindusl/opencode-sudo-popup#readme",
   "scripts": {
-    "postinstall": "node scripts/install.js"
+    "postinstall": "node scripts/install.js",
+    "uninstall": "node scripts/uninstall.js"
   },
   "keywords": [
     "opencode",
