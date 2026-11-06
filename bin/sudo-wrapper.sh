@@ -84,8 +84,20 @@ if [ "$fresh" -eq 0 ]; then
   fi
 fi
 
-# OpenCode's shell may not source the user's rc files, so default the helper.
-: "${SUDO_ASKPASS:=$HOME/.config/opencode/sudo-askpass.sh}"
-export SUDO_ASKPASS
+# Always use our own askpass helper so the password can't be redirected
+# through a pre-set SUDO_ASKPASS from another process in this session.
+export SUDO_ASKPASS="$HOME/.config/opencode/sudo-askpass.sh"
 
-exec "$REAL_SUDO" -A "$@"
+# Don't add a duplicate -A/--askpass if the caller already supplied one.
+has_askpass=0
+for arg in "$@"; do
+  if [ "$arg" = "-A" ] || [ "$arg" = "--askpass" ]; then
+    has_askpass=1
+    break
+  fi
+done
+if [ "$has_askpass" -eq 1 ]; then
+  exec "$REAL_SUDO" "$@"
+else
+  exec "$REAL_SUDO" -A "$@"
+fi
