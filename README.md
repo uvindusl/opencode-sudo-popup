@@ -24,6 +24,7 @@ The `postinstall` script automatically:
 
 - Copies the askpass helper + GJS dialog to `~/.config/opencode/`.
 - Installs a `sudo` wrapper to `~/.local/bin/sudo`. It only changes behaviour when OpenCode launched the command (`OPENCODE` is set) and there is no terminal; everywhere else it simply `exec`s the real sudo.
+- The wrapper always uses its own askpass helper (forces `SUDO_ASKPASS`) so the password prompt can't be redirected through a pre-set `SUDO_ASKPASS` from another process in your session.
 - Installs the plugin itself to `~/.config/opencode/plugin/sudo-reason.js` (V1) and `~/.config/opencode/plugins/sudo-reason.js` (V2).
 - Adds `PATH` and `SUDO_ASKPASS` exports to your shell rc file (`~/.zshenv`, `~/.bashrc`, or `~/.config/fish/config.fish`) — only when not already configured.
 
@@ -45,7 +46,7 @@ The plugin writes JSON (`{command, purpose, ts}`) to a per-user file at `/tmp/op
 
 ## What it catches
 
-It only matches `sudo` used as an actual command (whole word at a command boundary) — so it won't false-positive on a file path like `./some/sudo/file` or a `#`-comment mentioning sudo. It also strips sudo flags (`-u`, `-p`, etc.) and shell separators so the dialog shows the *real* command that needs root (e.g. `sudo apt update`).
+It only matches `sudo` used as an actual command (whole word at a command boundary) — so it won't false-positive on a file path like `./some/sudo/file` or a `#`-comment mentioning sudo. It also strips sudo flags (`-u`, `-p`, `--user`, `--group`, etc.) and shell separators so the dialog shows the *real* command that needs root (e.g. `sudo apt update`).
 
 ## Development
 
@@ -74,6 +75,20 @@ import('./src/index.js').then(async m => {
 });
 "
 cat /tmp/opencode-sudo-popup-$(id -u)/reason.json
+```
+
+### Tests and lint
+
+Run the unit test suite (covers `containsSudo`, `sudoTarget`, `inferPurpose`, and the V2 `setup` hook):
+
+```bash
+npm test
+```
+
+Lint the source:
+
+```bash
+npm run lint
 ```
 
 ## Uninstall
