@@ -2,13 +2,14 @@
 // opencode-sudo-popup — minimal askpass dialog (GJS + GTK4 + libadwaita).
 // Compact: shows the command opencode is about to run + a password field.
 // Contract: prints password to stdout on OK, exit 1 on Cancel.
-// Reads context from /tmp/opencode-sudo-reason (JSON or legacy flat string).
+// Reads context from the per-user reason file (JSON or legacy flat string).
+// The path is provided by sudo-askpass.sh via OPENCODE_SUDO_REASON.
 
 imports.gi.versions.Gtk = "4.0";
 imports.gi.versions.Adw = "1";
-const { Gtk, Gio, Adw } = imports.gi;
+const { Gtk, Gio, Adw, GLib } = imports.gi;
 
-const REASON = "/tmp/opencode-sudo-reason";
+const REASON = GLib.getenv("OPENCODE_SUDO_REASON") || "";
 const TITLE = "Sudo required";
 
 function readCommand() {

@@ -16,6 +16,8 @@ const LOCAL_BIN = join(HOME, ".local", "bin")
 
 const ASKPASS_UNIX = `"${ASKPASS_DEST}"`
 const ASKPASS_ESC = ASKPASS_UNIX.replaceAll('"', '\\"')
+// Marker used to identify the block this installer appends to shell rc files.
+const RC_MARKER = "# added by opencode-sudo-popup"
 
 async function ensureAskpass() {
   await mkdir(CONFIG_DIR, { recursive: true })
@@ -73,13 +75,6 @@ function pathLine(shell) {
   return `export PATH=${bin}:$PATH`
 }
 
-async function lineMissing(cur, line) {
-  // Normalise whitespace for comparison.
-  const norm = (s) => s.replace(/\s+/g, " ").trim()
-  const target = norm(line)
-  return cur.split("\n").every((l) => norm(l) !== target)
-}
-
 async function ensureEnv() {
   if (platform() === "win32") return false
   const shell = process.env.SHELL?.split("/").pop()
@@ -88,20 +83,18 @@ async function ensureEnv() {
   if (!rc) return false
 
   await mkdir(dirname(rc), { recursive: true })
-  let cur = existsSync(rc) ? await readFile(rc, "utf8") : ""
+  const cur = existsSync(rc) ? await readFile(rc, "utf8") : ""
 
-  const lines = [pathLine(shell), exportLine(shell)]
-  let changed = false
-  for (const line of lines) {
-    if (await lineMissing(cur, line)) {
-      cur = cur ? `${cur}\n${line}` : line
-      changed = true
-    }
-  }
-  if (changed) {
-    await writeFile(rc, `${cur}\n# added by opencode-sudo-popup\n`)
-  }
-  return changed
+  // Only add what is missing. `.local/bin` is already on PATH on many setups,
+  // so a substring check avoids appending a redundant PATH export.
+  const additions = []
+  if (!cur.includes(".local/bin")) additions.push(pathLine(shell))
+  if (!cur.includes("SUDO_ASKPASS")) additions.push(exportLine(shell))
+  if (additions.length === 0) return false
+
+  const prefix = cur.trim() ? `${cur.replace(/\n+$/, "")}\n\n` : ""
+  await writeFile(rc, `${prefix}${RC_MARKER}\n${additions.join("\n")}\n`)
+  return true
 }
 
 async function main() {
@@ -114,7 +107,8 @@ async function main() {
   const wired = await ensureEnv()
   if (wired) console.log("[opencode-sudo-popup] PATH + SUDO_ASKPASS exported to your shell rc")
   console.log("[opencode-sudo-popup] NOTE: restart opencode (and your terminal) after installing.")
-  console.log("[opencode-sudo-popup] Ensure ~/.local/bin is in your PATH before /usr/bin so the sudo wrapper takes effect.")
+  console.log("[opencode-sudo-popup] The sudo wrapper only activates inside OpenCode; normal sudo is untouched.")
+  console.log("[opencode-sudo-popup] To uninstall: npm run uninstall")
 }
 
 main().catch((e) => {

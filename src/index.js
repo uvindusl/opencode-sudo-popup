@@ -1,9 +1,12 @@
-import { writeFile, mkdir } from "node:fs/promises"
+import { writeFile, mkdir, rename, rm, stat } from "node:fs/promises"
 
 // Where the askpass helper (installed by the postinstall script) lives.
 // SUDO_ASKPASS points here; this plugin only needs to know the shared
-// temp-file path to communicate with it.
-const REASON_FILE = "/tmp/opencode-sudo-reason"
+// reason-file path to communicate with it. Keep this in sync with
+// bin/sudo-askpass.sh and bin/sudo-wrapper.sh.
+const UID = typeof process.getuid === "function" ? process.getuid() : "unknown"
+const REASON_DIR = `/tmp/opencode-sudo-popup-${UID}`
+const REASON_FILE = `${REASON_DIR}/reason.json`
 
 // A sudo invocation can be disguised as other words (e.g. the string
 // "sudo" inside a path, a comment, or a variable named "sudo"). Only
@@ -186,16 +189,23 @@ function inferPurpose(target, fullCmd = "") {
 }
 
 async function writeReason(cmd) {
+  const tmp = `${REASON_FILE}.${process.pid}.tmp`
   try {
-    await mkdir("/tmp", { recursive: true })
+    await mkdir(REASON_DIR, { recursive: true, mode: 0o700 })
+    const info = await stat(REASON_DIR)
+    if (!info.isDirectory() || (UID !== "unknown" && info.uid !== UID)) return
     const target = sudoTarget(cmd).replace(/\s+/g, " ").trim().slice(0, 800)
     const purpose = inferPurpose(target, cmd)
-    await writeFile(
-      REASON_FILE,
-      JSON.stringify({ v: 1, command: target, purpose, ts: Math.floor(Date.now() / 1000) }),
-    )
+    const payload = JSON.stringify({ v: 1, command: target, purpose, ts: Math.floor(Date.now() / 1000) })
+    await writeFile(tmp, payload, { mode: 0o600 })
+    await rename(tmp, REASON_FILE)
   } catch {
     // Best effort — the popup still works with a generic title.
+    try {
+      await rm(tmp, { force: true })
+    } catch {
+      // ignore
+    }
   }
 }
 
