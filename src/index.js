@@ -17,6 +17,7 @@ const SUDO_RE = /(^|[;&|(\s]+)sudo(\s+[a-zA-Z\-./~]|$)/
 // sudo option flags that consume an argument we should skip when trying
 // to find the actual command being run.
 const FLAG_WITH_ARG = new Set(["-C", "-D", "-h", "-p", "-u", "-U", "-g", "-T"])
+const FLAG_LONG_WITH_ARG = new Set(["--user", "--group", "--login-class", "--command", "--chdir"])
 
 function containsSudo(cmd) {
   if (!SUDO_RE.test(cmd)) return false
@@ -44,8 +45,10 @@ function sudoTarget(cmd) {
     const t = tokens[i]
     if (t === "--") break
     if (t.startsWith("-") && t.length > 1) {
-      // flag with inline arg like -u root stays as one token; else skip next
+      // flag with inline arg like -u root stays as one token; else skip next.
+      // Long flags (--user root) take a separate argument unless --flag=value.
       if (FLAG_WITH_ARG.has(t) || FLAG_WITH_ARG.has(t.slice(0, 2))) i++
+      else if (FLAG_LONG_WITH_ARG.has(t) && !t.includes("=")) i++
       i++
       continue
     }
@@ -220,6 +223,8 @@ async function handleCommand(command) {
   if (!containsSudo(cmd)) return
   await writeReason(cmd)
 }
+
+export { containsSudo, sudoTarget, inferPurpose }
 
 // V2 is optional at load time: an OpenCode V2 host provides `@opencode/plugin`
 // while legacy V1 provides `@opencode-ai/plugin`. Resolve lazily and fall back
